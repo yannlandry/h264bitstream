@@ -542,7 +542,7 @@ void read_scaling_list(bs_t* b, int* scalingList, int sizeOfScalingList, int* us
 void read_vui_parameters(sps_t* sps, bs_t* b);
 void read_hrd_parameters(hrd_t* hrd, bs_t* b);
 
-void read_pic_parameter_set_rbsp(h264_stream_t* h, bs_t* b);
+void read_pic_parameter_set_rbsp(pps_t* pps, bs_t* b);
 
 void read_sei_rbsp(h264_stream_t* h, bs_t* b);
 void read_sei_message(h264_stream_t* h, bs_t* b);
