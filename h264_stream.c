@@ -161,23 +161,8 @@ int read_nal_unit(h264_stream_t* h, uint8_t* buf, int size)
 {
     nal_t* nal = h->nal;
 
-    int nal_size = size;
-    int rbsp_size = size;
-    uint8_t* rbsp_buf = (uint8_t*)calloc(1, rbsp_size);
-
-    if( 1 )
-    {
-        int rc = nal_to_rbsp(buf, &nal_size, rbsp_buf, &rbsp_size);
-
-        if (rc < 0) { free(rbsp_buf); return -1; } // handle conversion error
-    }
-
-    if( 0 )
-    {
-        rbsp_size = size*3/4; // NOTE this may have to be slightly smaller (3/4 smaller, worst case) in order to be guaranteed to fit
-    }
-
-    bs_t* b = bs_new(rbsp_buf, rbsp_size);
+    bs_t* b = bs_new(buf, size);
+    bs_init_nalu(b); // turn on NALU mode
     /* forbidden_zero_bit */ bs_skip_u(b, 1);
     nal->nal_ref_idc = bs_read_u(b, 2);
     nal->nal_unit_type = bs_read_u(b, 5);
@@ -280,24 +265,13 @@ int read_nal_unit(h264_stream_t* h, uint8_t* buf, int size)
         case NAL_UNIT_TYPE_CODED_SLICE_DATA_PARTITION_C:
         default:
             bs_free(b);
-            free(rbsp_buf);
             return -1;
     }
 
-    if (bs_overrun(b)) { bs_free(b); free(rbsp_buf); return -1; }
+    if (bs_overrun(b)) { bs_free(b); return -1; }
 
-    if( 0 )
-    {
-        // now get the actual size used
-        rbsp_size = bs_pos(b);
-
-        int rc = rbsp_to_nal(rbsp_buf, &rbsp_size, buf, &nal_size);
-        if (rc < 0) { bs_free(b); free(rbsp_buf); return -1; }
-    }
-
+    int nal_size = bs_pos(b);
     bs_free(b);
-    free(rbsp_buf);
-
     return nal_size;
 }
 
@@ -2821,23 +2795,9 @@ int read_debug_nal_unit(h264_stream_t* h, uint8_t* buf, int size)
 {
     nal_t* nal = h->nal;
 
-    int nal_size = size;
-    int rbsp_size = size;
-    uint8_t* rbsp_buf = (uint8_t*)calloc(1, rbsp_size);
+    bs_t* b = bs_new(buf, size);
+    bs_init_nalu(b);
 
-    if( 1 )
-    {
-        int rc = nal_to_rbsp(buf, &nal_size, rbsp_buf, &rbsp_size);
-
-        if (rc < 0) { free(rbsp_buf); return -1; } // handle conversion error
-    }
-
-    if( 0 )
-    {
-        rbsp_size = size*3/4; // NOTE this may have to be slightly smaller (3/4 smaller, worst case) in order to be guaranteed to fit
-    }
-
-    bs_t* b = bs_new(rbsp_buf, rbsp_size);
     printf("%ld.%d: ", (long int)(b->p - b->start), b->bits_left); int forbidden_zero_bit = bs_read_u(b, 1); printf("forbidden_zero_bit: %d \n", forbidden_zero_bit); 
     printf("%ld.%d: ", (long int)(b->p - b->start), b->bits_left); nal->nal_ref_idc = bs_read_u(b, 2); printf("nal->nal_ref_idc: %d \n", nal->nal_ref_idc); 
     printf("%ld.%d: ", (long int)(b->p - b->start), b->bits_left); nal->nal_unit_type = bs_read_u(b, 5); printf("nal->nal_unit_type: %d \n", nal->nal_unit_type); 
@@ -2942,20 +2902,10 @@ int read_debug_nal_unit(h264_stream_t* h, uint8_t* buf, int size)
             return -1;
     }
 
-    if (bs_overrun(b)) { bs_free(b); free(rbsp_buf); return -1; }
+    if (bs_overrun(b)) { bs_free(b); return -1; }
 
-    if( 0 )
-    {
-        // now get the actual size used
-        rbsp_size = bs_pos(b);
-
-        int rc = rbsp_to_nal(rbsp_buf, &rbsp_size, buf, &nal_size);
-        if (rc < 0) { bs_free(b); free(rbsp_buf); return -1; }
-    }
-
+    int nal_size = bs_pos(b);
     bs_free(b);
-    free(rbsp_buf);
-
     return nal_size;
 }
 

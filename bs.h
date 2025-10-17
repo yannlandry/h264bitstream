@@ -37,6 +37,7 @@ typedef struct
 	uint8_t* p;
 	uint8_t* end;
 	int bits_left;
+	int nalu_mode;
 } bs_t;
 
 #define _OPTIMIZE_BS_ 1
@@ -52,10 +53,13 @@ static bs_t* bs_new(uint8_t* buf, size_t size);
 static void bs_free(bs_t* b);
 static bs_t* bs_clone( bs_t* dest, const bs_t* src );
 static bs_t*  bs_init(bs_t* b, uint8_t* buf, size_t size);
+static void bs_init_nalu(bs_t* b);
 static uint32_t bs_byte_aligned(bs_t* b);
 static int bs_eof(bs_t* b);
 static int bs_overrun(bs_t* b);
 static int bs_pos(bs_t* b);
+
+static void bs_advance(bs_t* b);
 
 static uint32_t bs_peek_u1(bs_t* b);
 static uint32_t bs_read_u1(bs_t* b);
@@ -84,7 +88,13 @@ static inline bs_t* bs_init(bs_t* b, uint8_t* buf, size_t size)
     b->p = buf;
     b->end = buf + size;
     b->bits_left = 8;
+    b->nalu_mode = 0;
     return b;
+}
+
+static inline void bs_init_nalu(bs_t* b)
+{
+    b->nalu_mode = 1;
 }
 
 static inline bs_t* bs_new(uint8_t* buf, size_t size)
@@ -121,6 +131,19 @@ static inline int bs_pos(bs_t* b) { if (b->p > b->end) { return (b->end - b->sta
 
 static inline int bs_bytes_left(bs_t* b) { return (b->end - b->p); }
 
+static inline void bs_advance(bs_t* b)
+{
+    b->p++;
+    b->bits_left = 8;
+
+    // Advance the pointer one more if we found an escape sequence (0x00 0x00 0x03)
+    if (b->nalu_mode && bs_pos(b) >= 2 && !bs_eof(b)) {
+        if (b->p[0] == 0x03 && b->p[-1] == 0x00 && b->p[-2] == 0x00) {
+            b->p++;
+        }
+    }
+}
+
 static inline uint32_t bs_read_u1(bs_t* b)
 {
     uint32_t r = 0;
@@ -132,7 +155,7 @@ static inline uint32_t bs_read_u1(bs_t* b)
         r = ((*(b->p)) >> b->bits_left) & 0x01;
     }
 
-    if (b->bits_left == 0) { b->p ++; b->bits_left = 8; }
+    if (b->bits_left == 0) { bs_advance(b); }
 
     return r;
 }
@@ -140,7 +163,7 @@ static inline uint32_t bs_read_u1(bs_t* b)
 static inline void bs_skip_u1(bs_t* b)
 {    
     b->bits_left--;
-    if (b->bits_left == 0) { b->p ++; b->bits_left = 8; }
+    if (b->bits_left == 0) { bs_advance(b); }
 }
 
 static inline uint32_t bs_peek_u1(bs_t* b)
@@ -183,7 +206,7 @@ static inline uint32_t bs_read_u8(bs_t* b)
     if (b->bits_left == 8 && ! bs_eof(b)) // can do fast read
     {
         uint32_t r = b->p[0];
-        b->p++;
+        bs_advance(b);
         return r;
     }
 #endif
@@ -232,7 +255,7 @@ static inline void bs_write_u1(bs_t* b, uint32_t v)
         (*(b->p)) |= ((v & 0x01) << b->bits_left);
     }
 
-    if (b->bits_left == 0) { b->p ++; b->bits_left = 8; }
+    if (b->bits_left == 0) { bs_advance(b); }
 }
 
 static inline void bs_write_u(bs_t* b, int n, uint32_t v)
@@ -252,7 +275,7 @@ static inline void bs_write_u8(bs_t* b, uint32_t v)
     if (b->bits_left == 8 && ! bs_eof(b)) // can do fast write
     {
         b->p[0] = v;
-        b->p++;
+        bs_advance(b);
         return;
     }
 #endif
